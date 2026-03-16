@@ -8,16 +8,16 @@
 %token ASSIGN SEMI LPAREN RPAREN
 %token PLUS MINUS STAR LT
 %token <string> VAR
-%token <int>    INT
+%token <int> INT
 %token EOF
 
-%right ELSE
-%left  SEMI
-%left  AND
+%right ELSE (* Resolve the dangling else problem *)
+%left SEMI
+%left AND
 %right NOT
 %nonassoc LT
-%left  PLUS MINUS
-%left  STAR
+%left PLUS MINUS
+%left STAR
 
 %start program
 %type <Minimp_ast.program> program
@@ -41,9 +41,9 @@ cmd:
 expr:
   | INT { Num $1 }
   | VAR { Var $1 }
-  | expr PLUS  expr { BinOp ("+", $1, $3) }
-  | expr MINUS expr { BinOp ("-", $1, $3) }
-  | expr STAR  expr { BinOp ("*", $1, $3) }
+  | expr PLUS expr { BinOp ($1, Add, $3) }
+  | expr MINUS expr { BinOp ($1, Sub, $3) }
+  | expr STAR expr { BinOp ($1, Mul, $3) }
   | LPAREN expr RPAREN { $2 }
 ;
 
