@@ -5,7 +5,8 @@
 %token TRUE FALSE
 %token FUN IF THEN ELSE LET IN LETFUN
 %token ARROW AND PLUS MINUS STAR LT TILDE EQ
-%token LPAREN RPAREN
+%token LPAREN RPAREN COLON DARROW
+%token TINT TBOOL
 %token <string> VAR
 %token <int> INT
 %token EOF
@@ -13,6 +14,7 @@
 %right IN
 %right ELSE
 %right ARROW
+%right DARROW
 %left AND PLUS MINUS STAR
 %nonassoc LT
 %right TILDE
@@ -26,10 +28,19 @@ term_eof:
   | term EOF { $1 }
 ;
 
+typ:
+  | TINT { TInt }
+  | TBOOL { TBool }
+  | typ ARROW typ { TArrow ($1, $3) }
+  | LPAREN typ RPAREN { $2 }
+;
+
 term:
-  | FUN VAR ARROW term { TFun ($2, $4) }
+  | FUN VAR COLON typ DARROW term { TFunA ($2, $4, $6) }
+  | FUN VAR DARROW term { TFun ($2, $4) }
   | IF term THEN term ELSE term { TIf ($2, $4, $6) }
   | LET VAR EQ term IN term { TLet ($2, $4, $6) }
+  | LETFUN VAR VAR COLON typ EQ term IN term { TLetFunA ($2, $3, $5, $7, $9) }
   | LETFUN VAR VAR EQ term IN term { TLetFun ($2, $3, $5, $7) }
   | term PLUS term { TBinOp ($1, Add, $3) }
   | term MINUS term { TBinOp ($1, Sub, $3) }
@@ -38,7 +49,7 @@ term:
   | term LT term { TBinOp ($1, Lt, $3) }
   | TILDE term { TNot $2 }
   | app { $1 }
-; 
+;
 
 app:
   | app atom { TApp ($1, $2) }

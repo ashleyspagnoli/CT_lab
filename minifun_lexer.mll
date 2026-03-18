@@ -13,7 +13,10 @@ rule token = parse
   | "let" { LET }
   | "in" { IN }
   | "letfun" { LETFUN }
-  | "=>" { ARROW }
+  | "int" { TINT }
+  | "bool" { TBOOL }
+  | "=>" { DARROW }  
+  | "->" { ARROW }
   | "&&" { AND }
   | "+" { PLUS }
   | "-" { MINUS }
@@ -23,6 +26,7 @@ rule token = parse
   | "(" { LPAREN }
   | ")" { RPAREN }
   | "=" { EQ }
+  | ":" { COLON }
   | ['0'-'9']+ as n { INT (int_of_string n) }
   | ['a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9']* as id { VAR id }
   | eof { EOF }
