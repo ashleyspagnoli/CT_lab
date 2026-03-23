@@ -1,0 +1,11 @@
+# File compilati OCaml
+*.cmi
+*.cmx
+*.o
+
+# Other generated files
+*.dot
+*.png
+
+# Test
+tests/
