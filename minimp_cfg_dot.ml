@@ -25,7 +25,7 @@ let cfg_to_dot ?(name="cfg") (g : cfg) : string =
 
   p "digraph %s {\n" name;
   p "rankdir=TB;\n";
-  p "node [shape=box, fontname=\"Courier\", fontsize=11];\n";
+  p "node [shape=box, fontname=\"Roboto\", fontsize=11];\n";
   p "edge [fontname=\"Courier\", fontsize=10];\n\n";
 
   (* Nodes *)
@@ -38,11 +38,11 @@ let cfg_to_dot ?(name="cfg") (g : cfg) : string =
     let label = dot_escape (pp_block n.code) in
     let style =
       if id = g.entry && id = g.exit then
-        "style=filled fillcolor=\"#a8d8a8\"" (* entry=exit: green *)
+        "style=filled fillcolor=\"#b2d8b2\"" (* entry=exit: green *)
       else if id = g.entry then
-        "style=filled fillcolor=\"#a8d8a8\"" (* entry: green *)
+        "style=filled fillcolor=\"#b2d8b2\"" (* entry: green *)
       else if id = g.exit then
-        "style=filled fillcolor=\"#f4a8a8\"" (* exit: red *)
+        "style=filled fillcolor=\"#a8c3f4\"" (* exit: red *)
       else ""
     in
     p "%d [label=\"%s\"%s];\n" id label style

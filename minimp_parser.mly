@@ -21,6 +21,10 @@
 
 %start program
 %type <Minimp_ast.program> program
+%type <Minimp_ast.cmd> cmd
+%type <Minimp_ast.expr> expr
+%type <Minimp_ast.bexpr> bexpr
+%type <Minimp_ast.cmd> simple_cmd 
 
 %%
 
@@ -35,7 +39,15 @@ cmd:
   | VAR ASSIGN expr { Assign ($1, $3) }
   | cmd SEMI cmd { Seq ($1, $3) }
   | IF bexpr THEN cmd ELSE cmd { If ($2, $4, $6) }
-  | WHILE bexpr DO cmd { While ($2, $4) }
+  | WHILE bexpr DO simple_cmd { While ($2, $4) }
+;
+
+simple_cmd:
+  | LPAREN cmd RPAREN { $2 }
+  | SKIP { Skip }
+  | VAR ASSIGN expr { Assign ($1, $3) }
+  | IF bexpr THEN simple_cmd ELSE simple_cmd { If ($2, $4, $6) }
+  | WHILE bexpr DO simple_cmd { While ($2, $4) }
 ;
 
 expr:

@@ -54,7 +54,7 @@ let pp_stmt = function
   | SAssign(x,e) -> Printf.sprintf "%s := %s" x (pp_expr e)
   | SGuard b -> Printf.sprintf "%s?" (pp_bexpr b)
 
-let pp_block stmts = String.concat "; " (List.map pp_stmt stmts)
+let pp_block stmts = String.concat ";\n" (List.map pp_stmt stmts)
 
 let pp_next = function
   | End -> "⊥"
