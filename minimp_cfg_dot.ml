@@ -28,6 +28,10 @@ let cfg_to_dot ?(name="cfg") (g : cfg) : string =
   p "node [shape=box, fontname=\"Roboto\", fontsize=11];\n";
   p "edge [fontname=\"Courier\", fontsize=10];\n\n";
 
+  (* Invisible entry/exit anchors *)
+  p "entry [label=\"\" shape=point style=invis width=0 height=0];\n";
+  p "exit [label=\"\" shape=point style=invis width=0 height=0];\n\n";
+
   (* Nodes *)
   let ids =
     Hashtbl.fold (fun id _ acc -> id :: acc) g.nodes []
@@ -48,6 +52,10 @@ let cfg_to_dot ?(name="cfg") (g : cfg) : string =
     p "%d [label=\"%s\"%s];\n" id label style
   ) ids;
   p "\n";
+
+  (* Entry/exit edges *)
+  p "entry -> %d [style=fileed];\n" g.entry;
+  p "%d -> exit [style=filled];\n\n" g.exit;
 
   (* Edges *)
   List.iter (fun id ->
