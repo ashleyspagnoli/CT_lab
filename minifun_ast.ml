@@ -4,7 +4,7 @@ type binop = Add | Sub | Mul | And | Lt
 
 type var = string
 
-type typ = TInt | TBool | TFun of type * type
+type typ = TInt | TBool | TArrow of typ * typ
 
 type term =
   | TNum of int (* <int> *)
