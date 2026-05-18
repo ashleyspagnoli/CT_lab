@@ -15,12 +15,18 @@
 %right ELSE
 %right ARROW
 %right DARROW
-%left AND PLUS MINUS STAR
+%left AND
+%left PLUS MINUS
+%left STAR
 %nonassoc LT
 %right TILDE
 
 %start term_eof
 %type <Minifun_ast.term> term_eof
+%type <Minifun_ast.term> term
+%type <Minifun_ast.term> app
+%type <Minifun_ast.term> atom
+%type <Minifun_ast.typ> typ
 
 %%
 

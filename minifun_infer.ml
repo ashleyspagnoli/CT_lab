@@ -213,7 +213,7 @@ let rec alg_w (gamma : env) (t : term) : monotype * subst =
                       (compose_subst s3
                         (compose_subst s2 s1)))
       in
-      (apply_subst_mono (compose_subst s5 s4) tau3, full_s)ì
+      (apply_subst_mono (compose_subst s5 s4) tau3, full_s)
   | TLet (x, t1, t2) ->
       let (tau1, s1) = alg_w gamma t1 in
       let gamma1 = apply_subst_env s1 gamma in
