@@ -84,10 +84,18 @@ let rec eval_term (rho : env) (t : term) : value =
        | _ -> raise (RuntimeError "If condition must be a boolean"))
   | TFun (x, body) ->
       VClosure { cl_param = x; cl_body = body; cl_env = rho }
+  | TFunA (x, _, body) ->
+      VClosure { cl_param = x; cl_body = body; cl_env = rho }
   | TLet (x, t1, t2) ->
       let v1 = eval_term rho t1 in
       eval_term (env_extend rho x v1) t2
   | TLetFun (f, x, t1, t2) ->
+      let env_ref = ref rho in
+      let rc = { rc_fname = f; rc_param = x; rc_body = t1; rc_env = env_ref } in
+      let rho2 = env_extend rho f (VRecClosure rc) in
+      env_ref := rho2;
+      eval_term rho2 t2
+  | TLetFunA (f, x, _, t1, t2) ->
       let env_ref = ref rho in
       let rc = { rc_fname = f; rc_param = x; rc_body = t1; rc_env = env_ref } in
       let rho2 = env_extend rho f (VRecClosure rc) in

@@ -15,7 +15,6 @@
 %left SEMI
 %left AND
 %right NOT
-%nonassoc LT
 %left PLUS MINUS
 %left STAR
 

@@ -2,49 +2,24 @@
 
 open Minimp_ast
 open Minimp_cfg
-open Minimp_eval
 open Minimp_llvm
+open Minimp_test_common
 
-let total = ref 0
-let passed = ref 0
-let failed = ref 0
+let has_command cmd =
+  Sys.command (Printf.sprintf "command -v %s >/dev/null 2>&1" cmd) = 0
 
-let check name result expected pp =
-  incr total;
-  if result = expected then begin
-    incr passed;
-    Printf.printf "  [PASS] %s\n" name
-  end else begin
-    incr failed;
-    Printf.printf "  [FAIL] %s\n    expected: %s\n    got:      %s\n"
-      name (pp expected) (pp result)
-  end
+let llvm_toolchain_available () =
+  has_command "opt" && has_command "llc" && has_command "clang"
 
-let check_int name result expected =
-  check name result expected string_of_int
-
-let check_raises name f =
-  incr total;
-  let raised = try ignore (f ()); false with _ -> true in
-  if raised then begin incr passed; Printf.printf "  [PASS] %s\n" name end
-  else begin incr failed; Printf.printf "  [FAIL] %s (expected exception)\n" name end
-
-let section s =
-  Printf.printf "\n=== %s ===\n" s
-
-let summary () =
-  Printf.printf "\n--- Results: %d/%d passed" !passed !total;
-  if !failed > 0 then Printf.printf ", %d FAILED" !failed;
-  Printf.printf " ---\n";
-  if !failed > 0 then exit 1
-
-let parse src =
-  let lexbuf = Lexing.from_string src in
-  Minimp_parser.program Minimp_lexer.token lexbuf
-
-let run src input =
-  let prog = parse src in
-  eval_program prog input
+let run_binary_with_input bin_file input =
+  let ic, oc, ec = Unix.open_process_full bin_file [||] in
+  output_string oc (Printf.sprintf "%d\n" input);
+  close_out oc;
+  let line = try input_line ic with End_of_file -> "" in
+  let _stderr = try really_input_string ec 4096 with _ -> "" in
+  ignore (Unix.close_process_full (ic, oc, ec));
+  try Some (int_of_string (String.trim line))
+  with _ -> None
 
 (* Compile MiniImp program to a .ll file, run opt mem2reg, compile with
    the wrapper via clang, execute with the given input and return stdout. *)
@@ -55,23 +30,12 @@ let llvm_run (ll_name : string) (prog : program) (g : plain_cfg) (input : int) :
   let bin_file = Printf.sprintf "tests/%s_bin" ll_name in
   let wrap_file = "tests/wrapper.c" in
 
-  (* Write wrapper *)
-  let wrapper = {|
-    #include <stdio.h>
-    #include <stdint.h>
-    #include <stdlib.h>
-    extern int64_t func(int64_t);
-    int main(int argc, char *argv[]) {
-      int64_t inp = atoll(argv[1]);
-      int64_t out = func(inp);
-      printf("%ld\n", out);
-      return 0;
-    }
-  |} in
-  (let oc = open_out wrap_file in output_string oc wrapper; close_out oc);
-
   write_llvm_file ll_file prog g;
 
+  if not (Sys.file_exists wrap_file) then
+    (Printf.printf "  [WARN] wrapper file not found: %s\n" wrap_file; None)
+  else if not (llvm_toolchain_available ()) then None
+  else
   (* opt mem2reg *)
   let r1 = Sys.command (Printf.sprintf "opt -p='mem2reg' %s -S -o %s 2>/dev/null" ll_file opt_file) in
   if r1 <> 0 then (Printf.printf "  [WARN] opt failed for %s\n" ll_name; None)
@@ -83,13 +47,7 @@ let llvm_run (ll_name : string) (prog : program) (g : plain_cfg) (input : int) :
       (* link with wrapper *)
       let r3 = Sys.command (Printf.sprintf "clang %s %s -o %s 2>/dev/null" wrap_file obj_file bin_file) in
       if r3 <> 0 then (Printf.printf "  [WARN] clang link failed for %s\n" ll_name; None)
-      else begin
-        let ic = Unix.open_process_in (Printf.sprintf "%s %d" bin_file input) in
-        let line = try input_line ic with End_of_file -> "" in
-        ignore (Unix.close_process_in ic);
-        try Some (int_of_string (String.trim line))
-        with _ -> None
-      end
+      else run_binary_with_input bin_file input
     end
   end
 
@@ -97,7 +55,7 @@ let llvm_run (ll_name : string) (prog : program) (g : plain_cfg) (input : int) :
 let check_llvm_vs_interp ll_name src input =
   let prog = parse src in
   let g    = cfg_of_program prog in
-  let expected = eval_program prog input in
+  let expected = run src input in
   match llvm_run ll_name prog g input with
   | None ->
       (* LLVM toolchain not available — just check IR is non-empty *)
@@ -216,6 +174,8 @@ let test_loops () =
 
 let test_llvm () =
   section "LLVM IR Generation";
+  if not (llvm_toolchain_available ()) then
+    Printf.printf "  [INFO] LLVM native execution skipped: opt/llc/clang not all available; checking generated IR instead.\n";
   test_ir_structure ();
   test_simple_programs ();
   test_conditionals ();

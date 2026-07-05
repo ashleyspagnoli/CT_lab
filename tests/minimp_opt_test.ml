@@ -4,43 +4,7 @@ open Minimp_ast
 open Minimp_cfg
 open Minimp_dataflow
 open Minimp_opt
-
-(** ── Test runner (same style as the dataflow test suite) ── *)
-
-let total  = ref 0
-let passed = ref 0
-let failed = ref 0
-
-let check name result expected pp =
-  incr total;
-  if result = expected then begin
-    incr passed;
-    Printf.printf "  [PASS] %s\n" name
-  end else begin
-    incr failed;
-    Printf.printf "  [FAIL] %s\n    expected: %s\n    got:      %s\n"
-      name (pp expected) (pp result)
-  end
-
-let check_bool name result expected =
-  check name result expected string_of_bool
-
-let check_int name result expected =
-  check name result expected string_of_int
-
-let section s =
-  Printf.printf "\n=== %s ===\n" s
-
-let summary () =
-  Printf.printf "\n--- Results: %d/%d passed" !passed !total;
-  if !failed > 0 then Printf.printf ", %d FAILED" !failed;
-  Printf.printf " ---\n";
-  if !failed > 0 then exit 1
-
-(** Parse a MiniImp program string. *)
-let parse src =
-  let lexbuf = Lexing.from_string src in
-  Minimp_parser.program Minimp_lexer.token lexbuf
+open Minimp_test_common
 
 (** Collect every SAssign target in the CFG (across all blocks). *)
 let assigned_vars_in_cfg (g : plain_cfg) : SS.t =
