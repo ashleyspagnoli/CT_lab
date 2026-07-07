@@ -6,8 +6,7 @@ open Minimp_ast
 type memory = (string * int) list
 
 (** Exceptions *)
-exception Deadlock of string
-exception TypeError of string
+exception UndefinedVariable of string
 
 (** Memory operations *)
 
@@ -15,7 +14,7 @@ exception TypeError of string
 let mem_get (sigma : memory) (x : string) : int =
   match List.assoc_opt x sigma with
   | Some v -> v
-  | None -> raise (Deadlock (Printf.sprintf "Undefined variable: '%s'" x))
+  | None -> raise (UndefinedVariable (Printf.sprintf "Undefined variable: '%s'" x))
 
 (* Update a variable in memory. Overwrite if it exists, else add it. *)
 let mem_update (sigma : memory) (x : string) (n : int) : memory =

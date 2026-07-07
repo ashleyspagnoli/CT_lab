@@ -6,7 +6,7 @@ type op = Add | Sub | Mul
 type expr =
   | Var of string (* <var> *)
   | Num of int (* <int> *)
-  | BinOp of expr * op * expr (* op, left, right: <e> + <e> | <e> - <e> | <e> * <e> *)
+  | BinOp of expr * op * expr (* left, op, right: <e> + <e> | <e> - <e> | <e> * <e> *)
 
 (** Boolean expressions *)
 type bexpr =

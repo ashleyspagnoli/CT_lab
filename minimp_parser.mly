@@ -12,7 +12,7 @@
 %token EOF
 
 %right ELSE (* Resolve the dangling else problem *)
-%left SEMI
+%left SEMI (* Sequencing, left-associative *)
 %left AND
 %right NOT
 %left PLUS MINUS
