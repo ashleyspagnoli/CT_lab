@@ -46,9 +46,7 @@ let apply_op (op : binop) (v1 : value) (v2 : value) : value =
       in
       raise (RuntimeError
         (Printf.sprintf "Operator '%s' not applicable to %s and %s"
-          (match op with Add -> "+" | Sub -> "-" | Mul -> "*" | And -> "&&" | Lt -> "<")
-          (type_of v1)
-          (type_of v2)))
+          (match op with Add -> "+" | Sub -> "-" | Mul -> "*" | And -> "&&" | Lt -> "<") (type_of v1) (type_of v2)))
 
 (** Memory operations *)
 
@@ -82,7 +80,7 @@ let rec eval_term (rho : env) (t : term) : value =
        | VBool true -> eval_term rho t2
        | VBool false -> eval_term rho t3
        | _ -> raise (RuntimeError "If condition must be a boolean"))
-  | TFun (x, body) ->
+  | TFun (x, body) -> 
       VClosure { cl_param = x; cl_body = body; cl_env = rho }
   | TFunA (x, _, body) ->
       VClosure { cl_param = x; cl_body = body; cl_env = rho }
