@@ -16,9 +16,9 @@
 %right ARROW
 %right DARROW
 %left AND
+%nonassoc LT
 %left PLUS MINUS
 %left STAR
-%nonassoc LT
 %right TILDE
 
 %start term_eof
