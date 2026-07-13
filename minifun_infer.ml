@@ -40,7 +40,10 @@ let rec apply_subst_mono (s : subst) (m : monotype) : monotype =
   match m with
   | MInt -> MInt
   | MBool -> MBool
-  | MVar v -> subst_lookup s v
+  | MVar v ->
+      (match List.assoc_opt v s with
+       | Some t -> apply_subst_mono s t
+       | None -> MVar v)
   | MArrow (a, b) -> MArrow (apply_subst_mono s a, apply_subst_mono s b)
 
 (* Apply substitution to a polytype *)
@@ -53,8 +56,8 @@ let rec apply_subst_poly (s : subst) (p : polytype) : polytype =
 
 (* Compose two substitutions *)
 let compose_subst (s2 : subst) (s1 : subst) : subst =
-  let s1' = List.map (fun (v, t) -> (v, apply_subst_mono s2 t)) s1 in
-  let extra = List.filter (fun (v, _) -> not (List.mem_assoc v s1')) s2 in
+  let s1' = List.map (fun (v, t) -> (v, apply_subst_mono s2 t)) s1 in (* Apply s2 to every type already stored in s1 *)
+  let extra = List.filter (fun (v, _) -> not (List.mem_assoc v s1')) s2 in (* Add bindings from s2 that are not already in s1 *)
   s1' @ extra
 
 (** Typing environment *)
@@ -89,7 +92,8 @@ let rec ftv_poly (p : polytype) : tvar list =
 let ftv_env (gamma : env) : tvar list =
   List.concat_map (fun (_, p) -> ftv_poly p) gamma
 
-(* Replaces all bound variables with fresh type variables *)
+(* Converts a polymorphic type into a monotype by replacing every quantified
+   variable with a fresh type variable *)
 let inst (p : polytype) : monotype =
   let rec go subst = function
     | Mono m -> apply_subst_mono subst m
@@ -122,24 +126,21 @@ let rec occurs (v : tvar) (m : monotype) : bool =
   | MVar w -> v = w
   | MArrow (a, b) -> occurs v a || occurs v b
 
-(* Unify: returns the most general substitution S such that S t1 = S t2 *)
+(* Returns the most general substitution S such that S t1 = S t2 *)
 let rec unify (t1 : monotype) (t2 : monotype) : subst =
   match t1, t2 with
   | MInt, MInt -> empty_subst
   | MBool, MBool -> empty_subst
   | MVar v, MVar w when v = w -> empty_subst
   | MVar v, t | t, MVar v ->
-      if occurs v t then
-        raise (TypeError(Printf.sprintf"Occurs check failed: type variable '%s' would create an infinite type" v))
-      else
-        [(v, t)]
+      if occurs v t then raise (TypeError(Printf.sprintf "Occurs check failed: type variable '%s' would create an infinite type" v))
+      else [(v, t)]
   | MArrow (a1, b1), MArrow (a2, b2) ->
       let s1 = unify a1 a2 in
       let s2 = unify (apply_subst_mono s1 b1) (apply_subst_mono s1 b2) in
       compose_subst s2 s1
   | _ ->
-      raise (TypeError(Printf.sprintf 
-        "Type mismatch: cannot unify '%s' with '%s'" (pp_mono t1) (pp_mono t2)))
+      raise (TypeError(Printf.sprintf "Type mismatch: cannot unify '%s' with '%s'" (pp_mono t1) (pp_mono t2)))
 
 (** Pretty-print a monotype *)
 and pp_mono = function
@@ -156,9 +157,11 @@ let rec pp_poly = function
 
 (** Algorithm W *)
 
+(* Infers an expression’s most general type by generating fresh type variables
+  and solving type constraints through unification *)
 let rec alg_w (gamma : env) (t : term) : monotype * subst =
   match t with
-  | TNum _  -> (MInt,  empty_subst)
+  | TNum _ -> (MInt,  empty_subst)
   | TBool _ -> (MBool, empty_subst)
   | TVar x ->
       let sigma = env_get gamma x in
@@ -170,7 +173,7 @@ let rec alg_w (gamma : env) (t : term) : monotype * subst =
       (MArrow (apply_subst_mono s tau, tau'), s)
   | TFunA (x, ann, body) ->
       let tau_ann = mono_of_typ ann in
-      let gamma'  = env_extend gamma x (Mono tau_ann) in
+      let gamma' = env_extend gamma x (Mono tau_ann) in
       let (tau', s) = alg_w gamma' body in
       (MArrow (apply_subst_mono s tau_ann, tau'), s)
   | TApp (t1, t2) ->
@@ -197,27 +200,21 @@ let rec alg_w (gamma : env) (t : term) : monotype * subst =
            (MBool, compose_subst s4 (compose_subst s3 (compose_subst s2 s1))))
   | TNot t1 ->
       let (tau1, s1) = alg_w gamma t1 in
-      let s2 = unify tau1 MBool in
+      let s2 = unify (apply_subst_mono s1 tau1) MBool in
       (MBool, compose_subst s2 s1)
   | TIf (t1, t2, t3) ->
       let (tau1, s1) = alg_w gamma t1 in
       let (tau2, s2) = alg_w (apply_subst_env s1 gamma) t2 in
-      let (tau3, s3) = alg_w (apply_subst_env s2 gamma) t3 in
+      let gamma2 = apply_subst_env (compose_subst s2 s1) gamma in
+      let (tau3, s3) = alg_w gamma2 t3 in
       let s4 = unify (apply_subst_mono (compose_subst s3 s2) tau1) MBool in
-      let s5 = unify
-                 (apply_subst_mono (compose_subst s4 s3) tau2)
-                 (apply_subst_mono s4 tau3)
-      in
-      let full_s = compose_subst s5
-                    (compose_subst s4
-                      (compose_subst s3
-                        (compose_subst s2 s1)))
-      in
+      let s5 = unify (apply_subst_mono (compose_subst s4 s3) tau2) (apply_subst_mono s4 tau3) in
+      let full_s = compose_subst s5 (compose_subst s4 (compose_subst s3 (compose_subst s2 s1))) in
       (apply_subst_mono (compose_subst s5 s4) tau3, full_s)
   | TLet (x, t1, t2) ->
       let (tau1, s1) = alg_w gamma t1 in
       let gamma1 = apply_subst_env s1 gamma in
-      let sigma = gener gamma1 tau1 in
+      let sigma = gener gamma1 (apply_subst_mono s1 tau1) in
       let gamma1' = env_extend gamma1 x sigma in
       let (tau2, s2) = alg_w gamma1' t2 in
       (tau2, compose_subst s2 s1)
@@ -230,15 +227,11 @@ let rec alg_w (gamma : env) (t : term) : monotype * subst =
         |> (fun g -> env_extend g x (Mono tau_x))
       in
       let (tau1, s1) = alg_w gamma' body in
-      let s2 = unify
-                 (apply_subst_mono s1 tau_f)
-                 (MArrow (apply_subst_mono s1 tau_x, tau1))
-      in
+      let s2 = unify (apply_subst_mono s1 tau_f) (MArrow (apply_subst_mono s1 tau_x, tau1)) in
       let s21 = compose_subst s2 s1 in
-      let gamma_cont =
-        apply_subst_env s21 gamma
-        |> (fun g -> env_extend g f (Mono (apply_subst_mono s21 tau_f)))
-      in
+      let gamma_base = apply_subst_env s21 gamma in
+      let sigma_f = gener gamma_base (apply_subst_mono s21 tau_f) in
+      let gamma_cont = env_extend gamma_base f sigma_f in
       let (tau2, s3) = alg_w gamma_cont t2 in
       (tau2, compose_subst s3 s21)
   | TLetFunA (f, x, ann, body, t2) ->
@@ -246,11 +239,7 @@ let rec alg_w (gamma : env) (t : term) : monotype * subst =
       let (tau_x, tau_ret) =
         match tau_ann with
         | MArrow (a, b) -> (a, b)
-        | _ ->
-            raise (TypeError
-              (Printf.sprintf
-                 "Annotation on 'letfun %s' must be a function type, got '%s'"
-                 f (pp_mono tau_ann)))
+        | _ -> raise (TypeError (Printf.sprintf "Annotation on 'letfun %s' must be a function type, got '%s'" f (pp_mono tau_ann)))
       in
       let gamma' =
         gamma

@@ -47,12 +47,10 @@ let check_raises ~label ~substr f =
   | Some msg when String.length substr = 0
                || (let re = Str.regexp_string substr in
                    (try ignore (Str.search_forward re msg 0); true
-                    with Not_found -> false)) ->
-      Printf.printf "  [PASS] %s\n" label;
-      incr pass_count
+                    with Not_found -> false)) -> 
+                      Printf.printf "  [PASS] %s\n" label; incr pass_count
   | Some msg ->
-      Printf.printf "  [FAIL] %s\n expected exception containing: %s\n got: %s\n"
-        label substr msg;
+      Printf.printf "  [FAIL] %s\n expected exception containing: %s\n got: %s\n" label substr msg;
       incr fail_count
   | None ->
       Printf.printf "  [FAIL] %s\n expected an exception but none was raised\n" label;
@@ -246,7 +244,11 @@ let () =
   check ~label:"fun x => x + 1 : int -> int"
     ~expected:"int -> int" ~got:(infer "fun x => x + 1");
   check ~label:"let x = 1 in x + 1 : int"
-    ~expected:"int" ~got:(infer "let x = 1 in x + 1")
+    ~expected:"int" ~got:(infer "let x = 1 in x + 1");
+
+  let s = [("a", MVar "b"); ("b", MInt)] in
+  check ~label:"recursive substitution: a -> b -> int"
+    ~expected:"int" ~got:(pp_mono (apply_subst_mono s (MVar "a")))
 
 let () = section "Inference — polymorphic (let-generalisation)"
 
@@ -269,7 +271,9 @@ let () =
     ~got:(infer "letfun fact n = if n < 1 then 1 else n * (fact (n - 1)) in fact");
   check ~label:"letfun fib applied : int"
     ~expected:"int"
-    ~got:(infer "letfun fib n = if n < 2 then n else (fib (n-1)) + (fib (n-2)) in fib 10")
+    ~got:(infer "letfun fib n = if n < 2 then n else (fib (n-1)) + (fib (n-2)) in fib 10");
+  check ~label:"letfun is polymorphic in its continuation"
+    ~expected:"int" ~got:(infer "letfun id x = x in let b = id true in id 1")
 
 let () = section "Inference — type errors (unification failures)"
 
@@ -281,5 +285,35 @@ let () =
   check_raises ~label:"occurs check: fun x => x x"
     ~substr:"infinite type" (fun () -> ignore (infer "fun x => x x"))
 
+
+let () = section "Inference — substitution propagation"
+
+let () =
+  check
+    ~label:"not applies substitutions inferred by its operand"
+    ~expected:"bool" ~got:(infer "~ ((fun x => x) true)");
+
+  check_raises
+    ~label:"let generalises the substituted inferred type"
+    ~substr:""
+    (fun () -> ignore (infer "let f = fun x => x + 1 in f true"));
+
+  check_raises
+    ~label:"condition constraint reaches else branch"
+    ~substr:""
+    (fun () -> ignore (infer "fun x => if ~ x then 1 else x"));
+
+  check
+    ~label:"same constrained variable in both branches"
+    ~expected:"bool -> bool" ~got:(infer "fun x => if x then x else false");
+
+  check_raises
+    ~label:"argument cannot be both int and bool"
+    ~substr:""
+    (fun () -> ignore (infer "fun f => let x = f 1 in f true"));
+
+  check
+    ~label:"let-polymorphism permits int and bool"
+    ~expected:"int" ~got:(infer "let id = fun x => x in let a = id true in id 1")
     
 let () = summary ()
