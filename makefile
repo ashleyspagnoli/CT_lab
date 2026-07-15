@@ -91,7 +91,7 @@ tests/minimp_parser_test.cmx: tests/minimp_test_common.cmx minimp_ast.cmx \
 tests/minimp_eval_test.cmx: tests/minimp_test_common.cmx minimp_ast.cmx \
                             minimp_eval.cmx minimp_lexer.cmx minimp_parser.cmx
 tests/minimp_cfg_test.cmx: tests/minimp_test_common.cmx minimp_ast.cmx minimp_cfg.cmx \
-                           minimp_cfg_dot.cmx minimp_dataflow.cmx \
+                           minimp_cfg_dot.cmx \
                            minimp_lexer.cmx minimp_parser.cmx
 minimp_dataflow.cmx: minimp_cfg.cmx
 tests/minimp_dataflow_test.cmx: minimp_ast.cmx minimp_cfg.cmx minimp_cfg_dot.cmx \

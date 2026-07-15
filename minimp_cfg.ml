@@ -21,7 +21,7 @@ type 'a node = {
   id : int;
   code : block;
   next : next;
-  ann  : 'a;  (* per-block annotation; use unit for plain CFGs *)
+  ann : 'a;  (* per-block annotation *)
 }
 
 (* CFG full graph *)
@@ -157,15 +157,16 @@ and merge_seq nodes i1 f1 i2 f2 =
   let n_f1 = Hashtbl.find nodes f1 in
   let n_i2 = Hashtbl.find nodes i2 in
   let clean_code l = List.filter (function SSkip -> false | _ -> true) l in
+  (* If plain they are simply merged *)
   if is_plain n_f1 && is_plain n_i2 then begin
     let merged_code = clean_code (n_f1.code @ n_i2.code) in
     Hashtbl.replace nodes f1
-      { n_f1 with
-        code = (if merged_code = [] then [SSkip] else merged_code);
-        next = n_i2.next };
+      { n_f1 with code = (if merged_code = [] then [SSkip] else merged_code);
+                  next = n_i2.next };
     Hashtbl.remove nodes i2;
     let new_f2 = if f2 = i2 then f1 else f2 in
     (i1, new_f2)
+  (* Otherwise we preserve the control flow and link them *)
   end else begin
     let f1_clean = clean_code n_f1.code in
     if f1_clean <> n_f1.code then

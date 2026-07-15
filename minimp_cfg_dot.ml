@@ -1,6 +1,7 @@
-(** Export CFG to Graphviz DOT format *)
+(** Export CFG to Graphviz DOT format and PNG *)
 
 open Minimp_cfg
+open Minimp_dataflow
 
 (* Escape special characters for DOT labels *)
 let dot_escape s =
@@ -9,15 +10,11 @@ let dot_escape s =
     match c with
     | '"' -> Buffer.add_string buf "\\\""
     | '\\' -> Buffer.add_string buf "\\\\"
-    | '<' -> Buffer.add_string buf "\\<"
-    | '>' -> Buffer.add_string buf "\\>"
-    | '{' -> Buffer.add_string buf "\\{"
-    | '}' -> Buffer.add_string buf "\\}"
-    | '|' -> Buffer.add_string buf "\\|"
+    | '\n' -> Buffer.add_string buf "\\n"
     | c -> Buffer.add_char buf c
   ) s;
   Buffer.contents buf
-
+  
 (** Render one CFG to a DOT string *)
 let cfg_to_dot ?(name = "cfg") ?(pp_ann : ('a -> string) = fun _ -> "") (g : 'a cfg) : string =
   let buf = Buffer.create 512 in
@@ -30,7 +27,7 @@ let cfg_to_dot ?(name = "cfg") ?(pp_ann : ('a -> string) = fun _ -> "") (g : 'a 
 
   (* Invisible entry/exit anchors *)
   p "entry [label=\"\" shape=point style=invis width=0 height=0];\n";
-  p "exit  [label=\"\" shape=point style=invis width=0 height=0];\n\n";
+  p "exit [label=\"\" shape=point style=invis width=0 height=0];\n\n";
 
   let ids = sorted_ids g in
 
@@ -38,11 +35,8 @@ let cfg_to_dot ?(name = "cfg") ?(pp_ann : ('a -> string) = fun _ -> "") (g : 'a 
   List.iter (fun id ->
     let n = Hashtbl.find g.nodes id in
     let code_label = dot_escape (pp_block n.code) in
-    let ann_label  = dot_escape (pp_ann n.ann) in
-    let full_label =
-      if ann_label = "" then code_label
-      else code_label ^ "\\n" ^ ann_label
-    in
+    let ann_label = dot_escape (pp_ann n.ann) in
+    let full_label = if ann_label = "" then code_label else code_label ^ "\\n" ^ ann_label in
     let style =
       if id = g.entry && id = g.exit then
         "style=filled fillcolor=\"#b2d8b2\"" (* entry=exit: green *)
@@ -52,7 +46,7 @@ let cfg_to_dot ?(name = "cfg") ?(pp_ann : ('a -> string) = fun _ -> "") (g : 'a 
         "style=filled fillcolor=\"#a8c3f4\"" (* exit: blue *)
       else ""
     in
-    p "%d [label=\"%s\"%s];\n" id full_label style
+    p "%d [label=\"%s\" %s];\n" id full_label style
   ) ids;
   p "\n";
 
@@ -89,12 +83,10 @@ let export_cfg ?(name = "cfg") ?(dot_file = "cfg.dot") ?(png_file = "cfg.png") ?
     let cmd = Printf.sprintf "dot -Tpng %s -o %s" dot_file png_file in
     match Sys.command cmd with
     | 0 -> Printf.printf "PNG rendered to %s\n%!" png_file
-    | _ -> Printf.printf "Graphviz not found or failed (skipping PNG).\n%!"
+    | _ -> Printf.printf "Graphviz not found or failed (PNG not generated).\n%!"
   end
 
 (** Wrappers for data-flow annotated CFGs *)
-
-open Minimp_dataflow
 
 (* Export a defined-variables or live-variables annotated CFG *)
 let export_df_ss_cfg ?(name = "cfg") ?(dot_file = "cfg.dot") ?(png_file = "cfg.png") ?(render = true) (g : SS.t df_ann cfg) : unit =
@@ -155,7 +147,7 @@ let export_df_ss_cfg ?(name = "cfg") ?(dot_file = "cfg.dot") ?(png_file = "cfg.p
     let cmd = Printf.sprintf "dot -Tpng %s -o %s" dot_file png_file in
     match Sys.command cmd with
     | 0 -> Printf.printf "PNG rendered to %s\n%!" png_file
-    | _ -> Printf.printf "Graphviz not found or failed (skipping PNG).\n%!"
+    | _ -> Printf.printf "Graphviz not found or failed (PNG not generated).\n%!"
   end
 
 (* Export a reaching-definitions annotated CFG *)
@@ -187,7 +179,7 @@ let export_df_is_cfg ?(name = "cfg") ?(dot_file = "cfg.dot") ?(png_file = "cfg.p
       else if id = g.exit then " style=filled fillcolor=\"#a8c3f4\""
       else ""
     in
-    p "%d [label=\"%s\"%s];\n" id full_label style
+    p "%d [label=\"%s\" %s];\n" id full_label style
   ) ids;
   p "\n";
   p "entry -> %d;\n" g.entry;
@@ -212,5 +204,5 @@ let export_df_is_cfg ?(name = "cfg") ?(dot_file = "cfg.dot") ?(png_file = "cfg.p
     let cmd = Printf.sprintf "dot -Tpng %s -o %s" dot_file png_file in
     match Sys.command cmd with
     | 0 -> Printf.printf "PNG rendered to %s\n%!" png_file
-    | rc -> Printf.printf "Graphviz not found or failed."
+    | _ -> Printf.printf "Graphviz not found or failed (PNG not generated).\n%!"
   end
