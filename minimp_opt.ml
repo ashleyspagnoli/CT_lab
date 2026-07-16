@@ -5,7 +5,7 @@ open Minimp_cfg
 open Minimp_dataflow
 
 (** Undefined variable checking *)
-
+(* Returns a list of warnings for variables used before being defined *)
 let check_undefined (prog : program) (g : plain_cfg) : (int * string) list =
   let (_def_cfg, def_warnings) = analyse_defined prog g in
   let live_cfg = analyse_live prog g in
@@ -16,6 +16,7 @@ let check_undefined (prog : program) (g : plain_cfg) : (int * string) list =
 
 (** Dead Store Elimination *)
 
+(* Computes the set of variables live after each statement in a block *)
 let stmt_live_sets (code : block) (block_out : SS.t) : SS.t list =
   let n = List.length code in
   let arr = Array.make n SS.empty in
@@ -30,6 +31,7 @@ let stmt_live_sets (code : block) (block_out : SS.t) : SS.t list =
   done;
   Array.to_list arr
 
+(* Removes assignments whose stored value is never used, using liveness information *)
 let eliminate_dead_stores (prog : program) (g : plain_cfg) : plain_cfg =
   let live_cfg = analyse_live prog g in
   let new_nodes : (int, unit node) Hashtbl.t = Hashtbl.create (Hashtbl.length g.nodes) in
