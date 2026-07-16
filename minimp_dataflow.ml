@@ -7,8 +7,6 @@ type 'a df_ann = { df_in : 'a; df_out : 'a }
 
 type 'a df_cfg = ('a df_ann) cfg
 
-type direction = Forward | Backward
-
 (* String and integers sets *)
 module SS = Set.Make(String)
 module IS = Set.Make(Int)
@@ -55,17 +53,22 @@ let transfer_defined (code : block) (df_in : SS.t) : SS.t =
 
 (* Defined-variables analysis *)
 let analyse_defined (prog : program) (g : plain_cfg) : SS.t df_cfg * (int * string) list =
+  (* All vars in the CFG *)
   let all_vars = 
     Hashtbl.fold (
       fun _ n acc -> List.fold_left (fun a s -> SS.union a (SS.union (used_stmt s) (assigned_stmt s))) acc n.code
     ) g.nodes SS.empty in
   let top = all_vars in
+
+  (* Initialize each node in and out *)
   let ann0 = { df_in = top; df_out = SS.empty } in
   let cfg : SS.t df_cfg = annotate_cfg ann0 g in
   (match Hashtbl.find_opt cfg.nodes cfg.entry with
    | None -> ()
    | Some n -> let entry_in = SS.singleton prog.input_var in
               Hashtbl.replace cfg.nodes cfg.entry { n with ann = { n.ann with df_in = entry_in } });
+
+  (* Recomputes each node's in and out defined-variables until fixpoint *)
   let changed = ref true in
   while !changed do
     changed := false;
@@ -88,7 +91,7 @@ let analyse_defined (prog : program) (g : plain_cfg) : SS.t df_cfg * (int * stri
     ) (sorted_ids cfg)
   done;
 
-  (* Collect warnings *)
+  (* Collect undefined-var warnings: detect variables that are used before they are definitely defined *)
   let warnings =
     Hashtbl.fold (fun id n acc ->
       let rec check stmts locally_defined acc =
@@ -166,14 +169,14 @@ type def_site = {
   def_idx : int; (* statement index within the block *)
 }
 
+(* Index all definitions in the program *)
 let index_definitions (input_var : string) (g : plain_cfg) : def_site list * (string, IS.t) Hashtbl.t =
   let all_defs = ref [] in
   let var_to_defs : (string, IS.t) Hashtbl.t = Hashtbl.create 16 in
   let counter = ref 1 in
-  let input_def = { def_id = 0; def_var = input_var; def_node = -1; def_idx = -1 } in
+  let input_def = { def_id = 0; def_var = input_var; def_node = -1; def_idx = -1 } in (* Synthetic definition for the input variable *)
   all_defs := [input_def];
   Hashtbl.add var_to_defs input_var (IS.singleton 0);
-
   List.iter (fun id ->
     let n = Hashtbl.find g.nodes id in
     List.iteri (fun idx s ->
@@ -216,7 +219,7 @@ let kill_reach (code : block) (node_id : int) (all_defs : def_site list) (var_to
 
 (* Transfer function *)
 let transfer_reach (code : block) (node_id : int) (all_defs : def_site list) (var_to_defs : (string, IS.t) Hashtbl.t) (df_in : IS.t) : IS.t =
-  let gen  = gen_reach  code node_id all_defs in
+  let gen = gen_reach code node_id all_defs in
   let kill = kill_reach code node_id all_defs var_to_defs in
   IS.union gen (IS.diff df_in kill)
 
