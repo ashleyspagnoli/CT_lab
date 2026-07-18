@@ -6,17 +6,6 @@ open Minimp_dataflow
 open Minimp_cfg_dot
 open Minimp_test_common
 
-let file_nonempty file =
-  if not (Sys.file_exists file) then false
-  else
-    let ic = open_in_bin file in
-    let size = in_channel_length ic in
-    close_in ic;
-    size > 0
-
-let remove_if_exists file =
-  if Sys.file_exists file then Sys.remove file
-
 let check_set label actual expected =
   check label (SS.elements actual) (List.sort_uniq String.compare expected)
     (fun xs -> "{" ^ String.concat ", " xs ^ "}")
@@ -78,7 +67,7 @@ let test_defined_partial_branch () =
     (List.exists (fun (_, variable) -> variable = "inp") warnings) false;
   export_and_check_ss "partial_branch" cfg
 
-let test_defined_slide () =
+let test_defined_loop () =
   let prog = parse
     {|def main with input inp output out as
       x := 2 ;
@@ -95,7 +84,7 @@ let test_defined_slide () =
     (fun xs -> String.concat ", " (List.map string_of_int xs));
   check_bool "warnings: x is definitely defined"
     (List.exists (fun (_, variable) -> variable = "x") warnings) false;
-  export_and_check_ss "def_vars_slide" cfg
+  export_and_check_ss "def_vars_loop" cfg
 
 let test_live_unused_assignment () =
   let prog = parse
@@ -112,13 +101,13 @@ let test_live_unused_assignment () =
   check_bool "live: unused b is not live at entry" (SS.mem "b" entry_ann.df_in) false;
   export_and_check_ss "live_unused_assignment" cfg
 
-let test_live_slide () =
+let test_live_if () =
   let prog = parse
     {|def main with input inp output out as
       a := 3 ;
       b := 2 ;
       x := 0 ;
-      (if 0 < inp then c := a + inp else a := 8 * b);
+      if 0 < inp then c := a + inp else a := 8 * b;
       c := 2 + a ;
       out := 2 * c + b|}
   in
@@ -129,7 +118,7 @@ let test_live_slide () =
   check_set "live: exact exit in" exit_ann.df_in ["a"; "b"];
   check_set "live: exact exit out" exit_ann.df_out ["out"];
   check_bool "live: unused x is not live at entry" (SS.mem "x" entry_ann.df_in) false;
-  export_and_check_ss "live_vars_slide" cfg
+  export_and_check_ss "live_vars_if" cfg
 
 let test_reaching_last_definition () =
   let prog = parse
@@ -147,7 +136,7 @@ let test_reaching_last_definition () =
     (match reaching_x with [definition] -> definition.def_idx = 1 | _ -> false) true;
   export_and_check_reaching "reaching_last_definition" cfg all_defs
 
-let test_reaching_slide () =
+let test_reaching_loop () =
   let prog = parse
     {|def main with input inp output out as
       x := inp ;
@@ -160,17 +149,17 @@ let test_reaching_slide () =
   check_bool "reaching: definition 1 enters loop body" (IS.mem 1 body_ann.df_in) true;
   check_bool "reaching: definition 1 is killed" (IS.mem 1 body_ann.df_out) false;
   check_bool "reaching: definition 3 reaches body output" (IS.mem 3 body_ann.df_out) true;
-  export_and_check_reaching "reaching_def_slide" cfg all_defs
+  export_and_check_reaching "reaching_def_loop" cfg all_defs
 
 let test_dataflow_cases () =
   section "Data-Flow Analysis and annotated CFG export";
   let cases = [
     "Defined Variables (partial branching)", test_defined_partial_branch;
-    "Defined Variables (slides)", test_defined_slide;
+    "Defined Variables (loops)", test_defined_loop;
     "Live variables (unused assignments)", test_live_unused_assignment;
-    "Live variables (slides)", test_live_slide;
+    "Live variables (if statements)", test_live_if;
     "Reaching definitions (last definition)", test_reaching_last_definition;
-    "Reaching definitions (slides)", test_reaching_slide;
+    "Reaching definitions (loops)", test_reaching_loop;
   ] in
   List.iter
     (fun (label, run) ->

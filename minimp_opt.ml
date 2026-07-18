@@ -56,6 +56,7 @@ let eliminate_dead_stores (prog : program) (g : plain_cfg) : plain_cfg =
 
 (** Constant Folding *)
 
+(* Evaluates an expression to a constant value if possible *)
 let rec try_eval_expr (e : expr) : int option =
   match e with
   | Num n -> Some n
@@ -69,6 +70,7 @@ let rec try_eval_expr (e : expr) : int option =
            | Mul -> Some (n1 * n2))
       | _ -> None
 
+(* Evaluates a boolean expression to a constant value if possible *)
 let rec try_eval_bexpr (b : bexpr) : bool option =
   match b with
   | BoolLit v -> Some v
@@ -83,6 +85,7 @@ let rec try_eval_bexpr (b : bexpr) : bool option =
        | Some n1, Some n2 -> Some (n1 < n2)
        | _ -> None)
 
+(* Folds an expression to a constant value if possible *)
 let rec fold_expr (e : expr) : expr =
   match e with
   | Num _ | Var _ -> e
@@ -99,6 +102,7 @@ let rec fold_expr (e : expr) : expr =
             | Sub, x, y when x = y -> Num 0 (* x-x = 0 *)
             | _ -> BinOp (l', op, r')))
 
+(* Folds a boolean expression to a constant value if possible *)
 let rec fold_bexpr (b : bexpr) : bexpr =
   match b with
   | BoolLit _ -> b
@@ -120,12 +124,14 @@ let rec fold_bexpr (b : bexpr) : bexpr =
        | Some v -> BoolLit v
        | None -> BoolLt (e1', e2'))
 
+(* Folds a statement to a constant value if possible *)
 let fold_stmt (s : stmt) : stmt =
   match s with
   | SSkip -> SSkip
   | SAssign (x, e) -> SAssign (x, fold_expr e)
   | SGuard b -> SGuard (fold_bexpr b)
 
+(* Folds a block to a constant value if possible *)
 let constant_folding (g : plain_cfg) : plain_cfg =
   let new_nodes : (int, unit node) Hashtbl.t = Hashtbl.create (Hashtbl.length g.nodes) in
   Hashtbl.iter (fun id n ->
@@ -139,14 +145,17 @@ let constant_folding (g : plain_cfg) : plain_cfg =
 
 type const_env = (string * int option) list
 
+(* Look up a variable in the constant environment *)
 let env_find (env : const_env) (x : string) : int option option =
   match List.assoc_opt x env with
   | Some v -> Some v
   | None -> None
 
+(* Set or update a variable's constant value in the environment *)
 let env_set (env : const_env) (x : string) (v : int option) : const_env =
   (x, v) :: List.filter (fun (k, _) -> k <> x) env
 
+(* Propagate constants inside an arithmetic expression *)
 let rec prop_expr (env : const_env) (e : expr) : expr =
   match e with
   | Num _ -> e
@@ -156,6 +165,7 @@ let rec prop_expr (env : const_env) (e : expr) : expr =
        | _ -> e)
   | BinOp (l, op, r) -> BinOp (prop_expr env l, op, prop_expr env r)
 
+(* Propagate constants inside a boolean expression *)
 let rec prop_bexpr (env : const_env) (b : bexpr) : bexpr =
   match b with
   | BoolLit _ -> b
@@ -163,6 +173,7 @@ let rec prop_bexpr (env : const_env) (b : bexpr) : bexpr =
   | BoolAnd (b1, b2) -> BoolAnd (prop_bexpr env b1, prop_bexpr env b2)
   | BoolLt (e1, e2) -> BoolLt (prop_expr env e1, prop_expr env e2)
 
+(* Propagate constants through a statement and return the updated environment *)
 let prop_stmt (env : const_env) (s : stmt) : stmt * const_env =
   match s with
   | SSkip -> (SSkip, env)
@@ -173,7 +184,9 @@ let prop_stmt (env : const_env) (s : stmt) : stmt * const_env =
       let e'' = (match v with Some n -> Num n | None -> e') in
       (SAssign (x, e''), env_set env x v)
 
+(* Build the initial constant environment from reaching definitions *)
 let build_env_from_reach (df_in : IS.t) (all_defs : def_site list) (g : plain_cfg) : const_env =
+  (* Group reaching definitions by variable name *)
   let by_var : (string, def_site list) Hashtbl.t = Hashtbl.create 8 in
   IS.iter (fun did ->
     match List.find_opt (fun d -> d.def_id = did) all_defs with
@@ -184,6 +197,7 @@ let build_env_from_reach (df_in : IS.t) (all_defs : def_site list) (g : plain_cf
         Hashtbl.replace by_var d.def_var (d :: prev)
   ) df_in;
   Hashtbl.fold (fun x defs acc ->
+    (* Only keep constants when all reaching defs for the variable agree *)
     let const_values = List.filter_map (fun d ->
       if d.def_node = -1 then None
       else
@@ -206,12 +220,17 @@ let build_env_from_reach (df_in : IS.t) (all_defs : def_site list) (g : plain_cf
     env_set acc x value
   ) by_var []
 
+(* Perform constant propagation across the control-flow graph *)
 let constant_propagation (prog : program) (g : plain_cfg) : plain_cfg =
+  (* Compute reaching definitions for all nodes *)
   let (reach_cfg, all_defs, _var_to_defs) = analyse_reaching prog g in
   let new_nodes : (int, unit node) Hashtbl.t = Hashtbl.create (Hashtbl.length g.nodes) in
+  (* Process each node in the CFG *)
   Hashtbl.iter (fun id n ->
     let reach_node = Hashtbl.find reach_cfg.nodes id in
+    (* Build initial constant environment from reaching definitions *)
     let init_env = build_env_from_reach reach_node.ann.df_in all_defs g in
+    (* Propagate constants through each statement in the node *)
     let new_code, _ =
       List.fold_left (fun (acc, env) s ->
         let (s', env') = prop_stmt env s in
@@ -225,6 +244,7 @@ let constant_propagation (prog : program) (g : plain_cfg) : plain_cfg =
 
 (** Optimization pipeline *) 
 
+(* Generate a fingerprint of the CFG for change detection *)
 let cfg_fingerprint (g : plain_cfg) : string =
   let ids = Hashtbl.fold (fun id _ acc -> id :: acc) g.nodes [] |> List.sort compare in
   String.concat "|" (List.map (fun id ->
@@ -232,7 +252,9 @@ let cfg_fingerprint (g : plain_cfg) : string =
     Printf.sprintf "%d:%s:%s" id (pp_block n.code) (pp_next n.next)
   ) ids)
 
+(* Apply optimization passes iteratively until fixed point *)
 let optimise (prog : program) (g : plain_cfg) : plain_cfg =
+  (* Fixed-point iteration: apply optimizations until the CFG stabilizes *)
   let rec fix_point g =
     let before = cfg_fingerprint g in
     let g = constant_folding g in
@@ -240,6 +262,7 @@ let optimise (prog : program) (g : plain_cfg) : plain_cfg =
     let after = cfg_fingerprint g in
     if before = after then g else fix_point g
   in
+  (* Apply fixed-point optimizations, then dead store elimination and final folding *)
   let g = fix_point g in
   let g = eliminate_dead_stores prog g in
   let g = constant_folding g in

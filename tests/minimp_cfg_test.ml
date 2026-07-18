@@ -21,17 +21,6 @@ let is_guard code =
   | [SGuard _] -> true
   | _ -> false
 
-let file_nonempty file =
-  if not (Sys.file_exists file) then false
-  else
-    let ic = open_in_bin file in
-    let size = in_channel_length ic in
-    close_in ic;
-    size > 0
-
-let remove_if_exists file =
-  if Sys.file_exists file then Sys.remove file
-
 let check_graph label g =
   check_bool (label ^ ": all edges valid") (all_edges_valid g) true;
   check_bool (label ^ ": exit terminal") ((node g g.exit).next = End) true

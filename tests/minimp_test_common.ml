@@ -69,3 +69,14 @@ let all_edges_valid g =
     | Next id -> Hashtbl.mem g.nodes id
     | Branch (t, f) -> Hashtbl.mem g.nodes t && Hashtbl.mem g.nodes f
   ) g.nodes true
+
+let file_nonempty file =
+  if not (Sys.file_exists file) then false
+  else
+    let ic = open_in_bin file in
+    let size = in_channel_length ic in
+    close_in ic;
+    size > 0
+
+let remove_if_exists file =
+  if Sys.file_exists file then Sys.remove file

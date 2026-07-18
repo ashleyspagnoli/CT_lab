@@ -11,8 +11,8 @@
 %token <int> INT
 %token EOF
 
-%right ELSE (* Resolve the dangling else problem *)
 %left SEMI (* Sequencing, left-associative *)
+%right ELSE (* Resolve the dangling else problem *)
 %left AND
 %right NOT
 %left PLUS MINUS
