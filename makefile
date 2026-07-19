@@ -7,6 +7,7 @@ DATAFLOW_TARGET = tests/minimp_dataflow_test
 OPT_TARGET = tests/minimp_opt_test
 LLVM_TARGET = tests/minimp_llvm_test
 FUN_TARGET = tests/minifun_test
+MAIN_TARGET = minilang
 
 LIB_MODULES = minimp_ast minimp_cfg minimp_dataflow minimp_opt minimp_cfg_dot minimp_eval minimp_lexer minimp_parser minimp_llvm
 
@@ -22,6 +23,7 @@ LLVM_MODULES = $(LIB_MODULES) $(COMMON_TEST_MODULE) tests/minimp_llvm_test
 MINIFUN_LIB_MODULES = minifun_ast minifun_eval minifun_typechecker minifun_infer minifun_lexer minifun_parser
 MINIFUN_TEST_MODULES = $(MINIFUN_LIB_MODULES) tests/minifun_test
 ALL_TESTS_MODULES = tests/all_tests
+MAIN_MODULES = $(LIB_MODULES) $(MINIFUN_LIB_MODULES) main
 
 LIB_CMXS = $(LIB_MODULES:%=%.cmx)
 PARSER_CMXS = $(PARSER_MODULES:%=%.cmx)
@@ -35,13 +37,19 @@ LLVM_CMXS = $(LLVM_MODULES:%=%.cmx)
 MINIFUN_LIB_CMXS = $(MINIFUN_LIB_MODULES:%=%.cmx)
 MINIFUN_TEST_CMXS = $(MINIFUN_TEST_MODULES:%=%.cmx)
 ALL_TESTS_CMXS = $(ALL_TESTS_MODULES:%=%.cmx)
+MAIN_CMXS = $(MAIN_MODULES:%=%.cmx)
 
-.PHONY: all test clean parser eval cfg dataflow opt llvm fun compat
+.PHONY: all test clean parser eval cfg dataflow opt llvm fun compat main run
 
 all: test
 
 test: $(ALL_TESTS_TARGET)
 	./$(ALL_TESTS_TARGET)
+
+main: $(MAIN_TARGET)
+
+run: $(MAIN_TARGET)
+	./$(MAIN_TARGET) $(FILE) $(if $(ARGS),$(ARGS),$(INPUT))
 
 parser: $(PARSER_TARGET)
 	./$(PARSER_TARGET)
@@ -124,6 +132,10 @@ tests/minifun_test.cmx: minifun_ast.cmx minifun_eval.cmx minifun_typechecker.cmx
 tests/all_tests.cmx: tests/all_tests.ml
 	ocamlfind ocamlopt -I tests -package str,unix -c tests/all_tests.ml
 
+main.cmx: main.ml minimp_ast.cmx minimp_cfg.cmx minimp_eval.cmx minimp_lexer.cmx minimp_parser.cmx \
+          minimp_llvm.cmx minifun_ast.cmx minifun_eval.cmx minifun_typechecker.cmx \
+          minifun_infer.cmx minifun_lexer.cmx minifun_parser.cmx
+
 $(PARSER_TARGET): $(PARSER_CMXS)
 	ocamlfind ocamlopt -package str -linkpkg -o $@ $(PARSER_CMXS)
 
@@ -150,6 +162,9 @@ $(ALL_TESTS_TARGET): $(PARSER_TARGET) $(EVAL_TARGET) $(CFG_TARGET) \
                      $(FUN_TARGET) $(ALL_TESTS_CMXS)
 	ocamlfind ocamlopt -package str,unix -linkpkg -o $@ $(ALL_TESTS_CMXS)
 
+$(MAIN_TARGET): $(MAIN_CMXS)
+	ocamlfind ocamlopt -package str -linkpkg -o $@ $(MAIN_CMXS)
+
 clean:
 	rm -f *.cm[iox] *.o *.txt \
 	      minimp_parser.ml minimp_parser.mli minimp_parser.conflicts \
@@ -160,9 +175,10 @@ clean:
 		  $(PARSER_TARGET) \
 		  $(EVAL_TARGET) \
 		  $(CFG_TARGET) \
-	      $(DATAFLOW_TARGET) \
-	      $(OPT_TARGET) \
-	      $(LLVM_TARGET) \
-	      $(FUN_TARGET) \
-	      $(ALL_TESTS_TARGET) \
-	      *.dot *.png
+			$(DATAFLOW_TARGET) \
+			$(OPT_TARGET) \
+			$(LLVM_TARGET) \
+			$(FUN_TARGET) \
+			$(ALL_TESTS_TARGET) \
+			$(MAIN_TARGET) \
+			*.ll *.dot *.png
