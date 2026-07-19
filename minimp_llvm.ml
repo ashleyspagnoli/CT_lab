@@ -86,36 +86,30 @@ let collect_vars (g : plain_cfg) : string list =
       | SSkip -> ()
     ) n.code
   ) g.nodes;
-  List.sort String.compare
-    (Hashtbl.fold (fun v () acc -> v :: acc) vars [])
+  List.sort String.compare (Hashtbl.fold (fun v () acc -> v :: acc) vars [])
 
 (* Compile a single block, returning its IR as a string *)
 
 let compile_block_full (node : unit node) : string =
   let buf = Buffer.create 128 in
-  emit buf (Printf.sprintf "block%d:" node.id);
+  emit buf (Printf.sprintf "block%d:" node.id);  (* block label *)
   (match node.next with
-   | Branch (t_id, f_id) ->
-       let guard_opt =
-         List.find_opt (function SGuard _ -> true | _ -> false) node.code
-       in
-       (* Emit non-guard statements first *)
-       List.iter (fun s ->
-         match s with
-         | SAssign (x, e) ->
-             let v = compile_expr buf e in
-             emit buf (Printf.sprintf "  store i64 %s, ptr %%%s.addr" v x)
-         | SGuard _ | SSkip -> ()
-       ) node.code;
-       (* Compile the guard expression right before the branch *)
-       let cond =
-         match guard_opt with
-         | Some (SGuard b) -> compile_bexpr buf b
-         | _ -> "1"
-       in
-       emit buf
-         (Printf.sprintf "  br i1 %s, label %%block%d, label %%block%d" cond t_id f_id)
-   | _ ->
+   | Branch (t_id, f_id) -> (* Conditional branch block *)
+      let guard_opt = List.find_opt (function SGuard _ -> true | _ -> false) node.code in
+      List.iter (fun s ->
+        match s with
+        | SAssign (x, e) ->
+            let v = compile_expr buf e in
+            emit buf (Printf.sprintf "  store i64 %s, ptr %%%s.addr" v x)
+        | SGuard _ | SSkip -> ()
+      ) node.code;
+      let cond =
+        match guard_opt with
+        | Some (SGuard b) -> compile_bexpr buf b
+        | _ -> "1"
+      in
+      emit buf (Printf.sprintf "  br i1 %s, label %%block%d, label %%block%d" cond t_id f_id)
+   | _ -> (* Linear or exit block *)
        List.iter (fun s ->
          match s with
          | SAssign (x, e) ->
@@ -125,8 +119,7 @@ let compile_block_full (node : unit node) : string =
        ) node.code;
        (match node.next with
         | End -> ()
-        | Next tgt ->
-            emit buf (Printf.sprintf "  br label %%block%d" tgt)
+        | Next tgt -> emit buf (Printf.sprintf "  br label %%block%d" tgt)  (* jump to the next block *)
         | Branch _ -> assert false));
   Buffer.contents buf
 
@@ -145,18 +138,15 @@ let generate_llvm (prog : program) (g : plain_cfg) : string =
     List.iter (fun v -> Hashtbl.replace s v ()) cfg_vars;
     Hashtbl.replace s prog.input_var ();
     Hashtbl.replace s prog.output_var ();
-    List.sort String.compare
-      (Hashtbl.fold (fun v () acc -> v :: acc) s [])
+    List.sort String.compare (Hashtbl.fold (fun v () acc -> v :: acc) s [])
   in
 
   (* Emit all alloca instructions in the entry block *)
-  List.iter (fun v ->
-    emit buf (Printf.sprintf "  %%%s.addr = alloca i64" v)
-  ) all_vars;
+  List.iter (fun v -> emit buf (Printf.sprintf "  %%%s.addr = alloca i64" v)) all_vars;
 
   (* Store the function argument into its alloca slot *)
-  emit buf (Printf.sprintf "  store i64 %%%s, ptr %%%s.addr"
-              prog.input_var prog.input_var);
+  emit buf (Printf.sprintf "  store i64 %%%s, ptr %%%s.addr" prog.input_var prog.input_var);
+
   (* Jump to the CFG entry block *)
   emit buf (Printf.sprintf "  br label %%block%d" g.entry);
   emit buf "";
