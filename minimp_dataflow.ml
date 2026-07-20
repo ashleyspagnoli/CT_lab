@@ -267,7 +267,7 @@ let pp_df_ann_is (ann : IS.t df_ann) : string =
   Printf.sprintf "  in=%s  out=%s" (pp_is ann.df_in) (pp_is ann.df_out)
 
 let pp_undef_warning (node_id : int) (var : string) : string =
-  Printf.sprintf "Warning: variable '%s' may be used before being defined (in block %d)" var node_id
+  Printf.sprintf "Warning: variable '%s' may be used before being defined" var
 
 let pp_reach_ids_verbose (ids : IS.t) (all_defs : def_site list) : string =
   if IS.is_empty ids then "{}"

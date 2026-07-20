@@ -254,7 +254,7 @@ let () = section "Inference — polymorphic (let-generalisation)"
 
 let () =
   let id_ty = infer "let id = fun x => x in id" in
-  check ~label:"let id = fun x => x : ∀a. a -> a (is polymorphic)"
+  check ~label:"let id = fun x => x : forall a. a -> a (is polymorphic)"
     ~expected:"true"
     ~got:(string_of_bool (String.length id_ty > 0 &&
                           (let re = Str.regexp "->$\\|-> " in

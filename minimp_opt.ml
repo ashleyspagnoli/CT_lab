@@ -274,5 +274,5 @@ let pp_undefined_warnings (warnings : (int * string) list) : string =
   if warnings = [] then "No undefined variable warnings."
   else
     String.concat "\n" (List.map (fun (blk, v) ->
-      Printf.sprintf "Warning: variable '%s' may be used undefined (block %d)" v blk
+      Printf.sprintf "Warning: variable '%s' may be used undefined" v
     ) warnings)
