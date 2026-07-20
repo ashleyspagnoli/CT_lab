@@ -39,7 +39,7 @@ MINIFUN_TEST_CMXS = $(MINIFUN_TEST_MODULES:%=%.cmx)
 ALL_TESTS_CMXS = $(ALL_TESTS_MODULES:%=%.cmx)
 MAIN_CMXS = $(MAIN_MODULES:%=%.cmx)
 
-.PHONY: all test clean parser eval cfg dataflow opt llvm fun compat main run
+.PHONY: all test clean parser eval cfg dataflow opt llvm fun compat main
 
 all: main
 
@@ -47,9 +47,6 @@ test: $(ALL_TESTS_TARGET)
 	./$(ALL_TESTS_TARGET)
 
 main: $(MAIN_TARGET)
-
-run: $(MAIN_TARGET)
-	./$(MAIN_TARGET) $(FILE) $(if $(ARGS),$(ARGS),$(INPUT))
 
 parser: $(PARSER_TARGET)
 	./$(PARSER_TARGET)
