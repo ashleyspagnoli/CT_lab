@@ -9,12 +9,12 @@ let read_file (filename : string) : string =
 
 let usage (prog : string) : unit =
   Printf.eprintf "Usage:\n";
-  Printf.eprintf "  %s <file.imp> <input_int>              run a MiniImp program\n" prog;
+  Printf.eprintf "  %s <file.imp> <input>                  run a MiniImp program\n" prog;
   Printf.eprintf "  %s <file.imp> --cfg [basename]         export the CFG as <basename>.dot/.png\n" prog;
   Printf.eprintf "  %s <file.imp> --dataflow <kind> [b]    export a data-flow analysis (kind: live|reach|defined)\n" prog;
   Printf.eprintf "  %s <file.imp> --optimize [basename]    optimize the program and export the resulting CFG\n" prog;
   Printf.eprintf "  %s <file.imp> --llvm [out.ll]          compile to LLVM IR\n" prog;
-  Printf.eprintf "  %s <file.fun>                          infer the type and evaluate a MiniFun program\n" prog;
+  Printf.eprintf "  %s <file.fun> <input>                  infer the type and evaluate a MiniFun program\n" prog;
   Printf.eprintf "  %s <file.fun> --check                  type-check (explicit annotations required)\n" prog
 
 let run_imp (file : string) (src : string) (argv : string array) : unit =
@@ -60,7 +60,7 @@ let run_imp (file : string) (src : string) (argv : string array) : unit =
            ~name:"defined" ~dot_file:(basename ^ ".dot") ~png_file:(basename ^ ".png") ~render:true
            def_cfg;
          List.iter
-           (fun (id, v) -> Printf.printf "Warning: variable '%s' may be undefined at node %d\n" v id)
+           (fun (id, v) -> Printf.printf "Warning: variable '%s' may be undefined\n" v)
            warnings
      | "reach" ->
          let (reach_cfg, all_defs, _) = Minimp_dataflow.analyse_reaching prog g in
@@ -111,18 +111,20 @@ let run_imp (file : string) (src : string) (argv : string array) : unit =
       exit 1
   end
 
-let run_fun (file : string) (src : string) (argv : string array) : unit =
+let parse_minifun_term (label : string) (src : string) : Minifun_ast.term =
   let lexbuf = Lexing.from_string src in
-  let term =
-    try Minifun_parser.term_eof Minifun_lexer.token lexbuf
-    with
-    | Minifun_parser.Error ->
-        Printf.eprintf "Syntax error in %s\n" file;
-        exit 1
-    | Failure msg ->
-        Printf.eprintf "Lexical error in %s: %s\n" file msg;
-        exit 1
-  in
+  try Minifun_parser.term_eof Minifun_lexer.token lexbuf
+  with
+  | Minifun_parser.Error ->
+      Printf.eprintf "Syntax error in %s\n" label;
+      exit 1
+  | Failure msg ->
+      Printf.eprintf "Lexical error in %s: %s\n" label msg;
+      exit 1
+
+let run_fun (file : string) (src : string) (argv : string array) : unit =
+  let term = parse_minifun_term file src in
+
   if Array.length argv >= 3 && argv.(2) = "--check" then begin
     try
       let ty = Minifun_typechecker.typecheck_program term in
@@ -132,11 +134,20 @@ let run_fun (file : string) (src : string) (argv : string array) : unit =
       exit 1
   end
   else begin
+    let term =
+      if Array.length argv >= 3 then
+        let arg = parse_minifun_term "command-line argument" argv.(2) in
+        Minifun_ast.TApp (term, arg)
+      else
+        term
+    in
+
     (try
        let ty_str = Minifun_infer.infer_program_pp term in
        Printf.printf "Inferred type: %s\n" ty_str
      with Minifun_infer.TypeError msg ->
        Printf.eprintf "Inference error: %s\n" msg);
+
     try
       let v = Minifun_eval.eval_minifun term in
       Printf.printf "Value: %s\n" (Minifun_eval.pp_value v)
@@ -144,7 +155,7 @@ let run_fun (file : string) (src : string) (argv : string array) : unit =
       Printf.eprintf "Runtime error: %s\n" msg;
       exit 1
   end
-
+  
 let () =
   let argv = Sys.argv in
   if Array.length argv < 2 then begin
