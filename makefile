@@ -41,7 +41,7 @@ MAIN_CMXS = $(MAIN_MODULES:%=%.cmx)
 
 .PHONY: all test clean parser eval cfg dataflow opt llvm fun compat main run
 
-all: test
+all: main
 
 test: $(ALL_TESTS_TARGET)
 	./$(ALL_TESTS_TARGET)
