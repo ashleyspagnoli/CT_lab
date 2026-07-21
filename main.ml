@@ -10,17 +10,39 @@ let read_file (filename : string) : string =
 let usage (prog : string) : unit =
   Printf.eprintf "Usage:\n";
   Printf.eprintf "  %s <file.imp> <input>                  run a MiniImp program\n" prog;
-  Printf.eprintf "  %s <file.imp> --cfg [basename]         export the CFG as <basename>.dot/.png\n" prog;
+  Printf.eprintf "  %s <file.imp> --cfg [b]                export the CFG as <b>.dot/.png\n" prog;
   Printf.eprintf "  %s <file.imp> --dataflow <kind> [b]    export a data-flow analysis CFG (kind: live|reach|defined)\n" prog;
-  Printf.eprintf "  %s <file.imp> --opt [basename]         optimize the program and export the resulting CFG\n" prog;
-  Printf.eprintf "  %s <file.imp> <input> --opt [basename] optimize, export the CFG, and run the program\n" prog;
-  Printf.eprintf "  %s <file.imp> --llvm [out.ll]          compile to LLVM IR\n" prog;
+  Printf.eprintf "  %s <file.imp> --opt [b]                optimize the program and export the resulting CFG\n" prog;
+  Printf.eprintf "  %s <file.imp> <input> --opt [b]        optimize, export the CFG, and run the program\n" prog;
+  Printf.eprintf "  %s <file.imp> --llvm [b]               compile to LLVM IR\n" prog;
+  Printf.eprintf "  %s <file.imp> <input> --llvm-run [b]   generate, optimise, compile, and run LLVM\n" prog;
   Printf.eprintf "  %s <file.fun> <input>                  infer the type and evaluate a MiniFun program\n" prog;
   Printf.eprintf "  %s <file.fun> --check                  type-check (explicit annotations required)\n" prog;
   Printf.eprintf "  %s <file.fun> <input> --check          type-check the application and evaluate it\n" prog
 
-let is_opt_flag (arg : string) : bool =
-  arg = "--opt" || arg = "--optimize"
+let run_command (description : string) (command : string) : unit =
+  if Sys.command command <> 0 then begin
+    Printf.eprintf "LLVM error while %s\n" description;
+    exit 1
+  end
+
+let compile_and_run_llvm (prog : Minimp_ast.program) (input_val : int) (basename : string) : unit =
+  let ll_file = basename ^ ".ll" in
+  let opt_file = basename ^ "_opt.ll" in
+  let obj_file = basename ^ ".o" in
+  let bin_file = basename ^ "_bin" in
+  let g = Minimp_cfg.cfg_of_program prog in
+  Minimp_llvm.write_llvm_file ll_file prog g;
+  run_command "running mem2reg"
+    (Printf.sprintf "opt -p='mem2reg' %s -S -o %s" (Filename.quote ll_file) (Filename.quote opt_file));
+  run_command "compiling LLVM IR"
+    (Printf.sprintf "llc -filetype=obj %s -o %s" (Filename.quote opt_file) (Filename.quote obj_file));
+  run_command "linking the wrapper"
+    (Printf.sprintf "clang %s %s -o %s" (Filename.quote "tests/wrapper.c") (Filename.quote obj_file) (Filename.quote bin_file));
+  let executable = if Filename.dirname bin_file = "." then "./" ^ bin_file else bin_file
+  in
+  run_command "running the compiled program"
+    (Printf.sprintf "printf '%%s\\n' %s | %s" (Filename.quote (string_of_int input_val)) (Filename.quote executable))
 
 let run_imp (file : string) (src : string) (argv : string array) : unit =
   let lexbuf = Lexing.from_string src in
@@ -41,10 +63,7 @@ let run_imp (file : string) (src : string) (argv : string array) : unit =
     print_newline ();
     let optimized = Minimp_opt.optimise prog g in
     Minimp_cfg_dot.export_cfg
-      ~name:"cfg_optimized"
-      ~dot_file:(basename ^ ".dot")
-      ~png_file:(basename ^ ".png")
-      ~render:true
+      ~name:"cfg_optimized" ~dot_file:(basename ^ ".dot") ~png_file:(basename ^ ".png") ~render:true
       optimized;
     optimized
   in
@@ -52,10 +71,7 @@ let run_imp (file : string) (src : string) (argv : string array) : unit =
     let basename = if Array.length argv >= 4 then argv.(3) else "cfg" in
     let g = Minimp_cfg.cfg_of_program prog in
     Minimp_cfg_dot.export_cfg
-      ~name:"cfg"
-      ~dot_file:(basename ^ ".dot")
-      ~png_file:(basename ^ ".png")
-      ~render:true
+      ~name:"cfg" ~dot_file:(basename ^ ".dot") ~png_file:(basename ^ ".png") ~render:true
       g
   end
   else if Array.length argv >= 3 && argv.(2) = "--dataflow" then begin
@@ -90,35 +106,38 @@ let run_imp (file : string) (src : string) (argv : string array) : unit =
          Printf.eprintf "Unknown data-flow analysis '%s' (expected: live | reach | defined)\n" other;
          exit 1)
   end
-  else if Array.length argv >= 3 && is_opt_flag argv.(2) then begin
+  else if Array.length argv >= 3 && argv.(2) = "--opt" then begin
     let basename = if Array.length argv >= 4 then argv.(3) else "cfg_optimized" in
     ignore (export_optimized basename)
   end
   else if Array.length argv >= 3 && argv.(2) = "--llvm" then begin
     let out = if Array.length argv >= 4 then argv.(3) else "out.ll" in
     let g = Minimp_cfg.cfg_of_program prog in
-    Minimp_llvm.write_llvm_file out prog g;
-    Printf.printf "LLVM IR written to %s\n" out
+    Minimp_llvm.write_llvm_file out prog g
   end
   else begin
     if Array.length argv < 3 then begin
-      Printf.eprintf "An integer input value is required.\n";
+      Printf.eprintf "An input value is required.\n";
       usage argv.(0);
       exit 1
     end;
     let input_val =
       try int_of_string argv.(2)
       with Failure _ ->
-        Printf.eprintf "'%s' is not a valid integer\n" argv.(2);
+        Printf.eprintf "'%s' is not a valid input\n" argv.(2);
         exit 1
     in
     let optimized_cfg =
-      if Array.length argv >= 4 && is_opt_flag argv.(3) then begin
+      if Array.length argv >= 4 && argv.(3) = "--opt" then begin
         let basename = if Array.length argv >= 5 then argv.(4) else "cfg_optimized" in
         Some (export_optimized basename)
       end else
         None
     in
+    if Array.length argv >= 4 && argv.(3) = "--llvm-run" then begin
+      let basename = if Array.length argv >= 5 then argv.(4) else "out" in
+      compile_and_run_llvm prog input_val basename
+    end else
     try
       let result =
         match optimized_cfg with

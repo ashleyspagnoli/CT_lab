@@ -178,4 +178,4 @@ clean:
 			$(FUN_TARGET) \
 			$(ALL_TESTS_TARGET) \
 			$(MAIN_TARGET) \
-			*.ll *.dot *.png
+			*.ll *.dot *.png out_bin
