@@ -1,6 +1,7 @@
 (** MiniImp — Runtime Environment and Evaluator *)
 
 open Minimp_ast
+open Minimp_cfg
 
 (** Memory model: we represent memory as an association list from variable names to integer values *)
 type memory = (string * int) list
@@ -71,4 +72,36 @@ let rec eval_cmd (sigma : memory) (c : cmd) : memory =
 let eval_program (prog : program) (input_val : int) : int =
   let sigma0 = mem_update [] prog.input_var input_val in
   let sigma1 = eval_cmd sigma0 prog.body in
+  mem_get sigma1 prog.output_var
+
+(** Evaluate a control-flow graph generated from a MiniImp program *)
+let eval_cfg (g : plain_cfg) (prog : program) (input_val : int) : int =
+  let eval_block (sigma : memory) (code : block) : memory * bool option =
+    List.fold_left
+      (fun (sigma, guard) stmt ->
+        match stmt with
+        | SSkip -> (sigma, guard)
+        | SAssign (x, e) -> (mem_update sigma x (eval_expr sigma e), guard)
+        | SGuard b -> (sigma, Some (eval_bexpr sigma b)))
+      (sigma, None)
+      code
+  in
+  let rec execute (node_id : int) (sigma : memory) : memory =
+    let node =
+      match Hashtbl.find_opt g.nodes node_id with
+      | Some node -> node
+      | None -> failwith (Printf.sprintf "CFG error: node %d not found" node_id)
+    in
+    let sigma, guard = eval_block sigma node.code in
+    match node.next with
+    | End -> sigma
+    | Next successor -> execute successor sigma
+    | Branch (if_true, if_false) ->
+        (match guard with
+         | Some true -> execute if_true sigma
+         | Some false -> execute if_false sigma
+         | None -> failwith (Printf.sprintf "CFG error: branch node %d has no guard" node_id))
+  in
+  let sigma0 = mem_update [] prog.input_var input_val in
+  let sigma1 = execute g.entry sigma0 in
   mem_get sigma1 prog.output_var

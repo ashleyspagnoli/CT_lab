@@ -11,11 +11,16 @@ let usage (prog : string) : unit =
   Printf.eprintf "Usage:\n";
   Printf.eprintf "  %s <file.imp> <input>                  run a MiniImp program\n" prog;
   Printf.eprintf "  %s <file.imp> --cfg [basename]         export the CFG as <basename>.dot/.png\n" prog;
-  Printf.eprintf "  %s <file.imp> --dataflow <kind> [b]    export a data-flow analysis (kind: live|reach|defined)\n" prog;
-  Printf.eprintf "  %s <file.imp> --optimize [basename]    optimize the program and export the resulting CFG\n" prog;
+  Printf.eprintf "  %s <file.imp> --dataflow <kind> [b]    export a data-flow analysis CFG (kind: live|reach|defined)\n" prog;
+  Printf.eprintf "  %s <file.imp> --opt [basename]         optimize the program and export the resulting CFG\n" prog;
+  Printf.eprintf "  %s <file.imp> <input> --opt [basename] optimize, export the CFG, and run the program\n" prog;
   Printf.eprintf "  %s <file.imp> --llvm [out.ll]          compile to LLVM IR\n" prog;
   Printf.eprintf "  %s <file.fun> <input>                  infer the type and evaluate a MiniFun program\n" prog;
-  Printf.eprintf "  %s <file.fun> --check                  type-check (explicit annotations required)\n" prog
+  Printf.eprintf "  %s <file.fun> --check                  type-check (explicit annotations required)\n" prog;
+  Printf.eprintf "  %s <file.fun> <input> --check          type-check the application and evaluate it\n" prog
+
+let is_opt_flag (arg : string) : bool =
+  arg = "--opt" || arg = "--optimize"
 
 let run_imp (file : string) (src : string) (argv : string array) : unit =
   let lexbuf = Lexing.from_string src in
@@ -28,6 +33,20 @@ let run_imp (file : string) (src : string) (argv : string array) : unit =
     | Failure msg ->
         Printf.eprintf "Lexical error in %s: %s\n" file msg;
         exit 1
+  in
+  let export_optimized basename =
+    let g = Minimp_cfg.cfg_of_program prog in
+    let warnings = Minimp_opt.check_undefined prog g in
+    print_string (Minimp_opt.pp_undefined_warnings warnings);
+    print_newline ();
+    let optimized = Minimp_opt.optimise prog g in
+    Minimp_cfg_dot.export_cfg
+      ~name:"cfg_optimized"
+      ~dot_file:(basename ^ ".dot")
+      ~png_file:(basename ^ ".png")
+      ~render:true
+      optimized;
+    optimized
   in
   if Array.length argv >= 3 && argv.(2) = "--cfg" then begin
     let basename = if Array.length argv >= 4 then argv.(3) else "cfg" in
@@ -71,19 +90,9 @@ let run_imp (file : string) (src : string) (argv : string array) : unit =
          Printf.eprintf "Unknown data-flow analysis '%s' (expected: live | reach | defined)\n" other;
          exit 1)
   end
-  else if Array.length argv >= 3 && argv.(2) = "--optimize" then begin
+  else if Array.length argv >= 3 && is_opt_flag argv.(2) then begin
     let basename = if Array.length argv >= 4 then argv.(3) else "cfg_optimized" in
-    let g = Minimp_cfg.cfg_of_program prog in
-    let warnings = Minimp_opt.check_undefined prog g in
-    print_string (Minimp_opt.pp_undefined_warnings warnings);
-    print_newline ();
-    let optimized = Minimp_opt.optimise prog g in
-    Minimp_cfg_dot.export_cfg
-      ~name:"cfg_optimized"
-      ~dot_file:(basename ^ ".dot")
-      ~png_file:(basename ^ ".png")
-      ~render:true
-      optimized
+    ignore (export_optimized basename)
   end
   else if Array.length argv >= 3 && argv.(2) = "--llvm" then begin
     let out = if Array.length argv >= 4 then argv.(3) else "out.ll" in
@@ -103,8 +112,19 @@ let run_imp (file : string) (src : string) (argv : string array) : unit =
         Printf.eprintf "'%s' is not a valid integer\n" argv.(2);
         exit 1
     in
+    let optimized_cfg =
+      if Array.length argv >= 4 && is_opt_flag argv.(3) then begin
+        let basename = if Array.length argv >= 5 then argv.(4) else "cfg_optimized" in
+        Some (export_optimized basename)
+      end else
+        None
+    in
     try
-      let result = Minimp_eval.eval_program prog input_val in
+      let result =
+        match optimized_cfg with
+        | Some g -> Minimp_eval.eval_cfg g prog input_val
+        | None -> Minimp_eval.eval_program prog input_val
+      in
       Printf.printf "%d\n" result
     with Minimp_eval.UndefinedVariable msg ->
       Printf.eprintf "Runtime error: %s\n" msg;
@@ -124,23 +144,28 @@ let parse_minifun_term (label : string) (src : string) : Minifun_ast.term =
 
 let run_fun (file : string) (src : string) (argv : string array) : unit =
   let term = parse_minifun_term file src in
+  let has_input = Array.length argv >= 3 && argv.(2) <> "--check" in
+  let check_requested =
+    (Array.length argv >= 3 && argv.(2) = "--check") ||
+    (Array.length argv >= 4 && argv.(3) = "--check")
+  in
+  let term =
+    if has_input then
+      let arg = parse_minifun_term "command-line argument" argv.(2) in
+      Minifun_ast.TApp (term, arg)
+    else
+      term
+  in
 
-  if Array.length argv >= 3 && argv.(2) = "--check" then begin
+  if check_requested then begin
     try
       let ty = Minifun_typechecker.typecheck_program term in
       Printf.printf "Type: %s\n" (Minifun_typechecker.pp_typ ty)
     with Minifun_typechecker.TypeError msg ->
       Printf.eprintf "Type error: %s\n" msg;
       exit 1
-  end
-  else begin
-    let term =
-      if Array.length argv >= 3 then
-        let arg = parse_minifun_term "command-line argument" argv.(2) in
-        Minifun_ast.TApp (term, arg)
-      else
-        term
-    in
+  end;
+  if not check_requested || has_input then begin
 
     (try
        let ty_str = Minifun_infer.infer_program_pp term in

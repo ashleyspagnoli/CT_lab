@@ -64,7 +64,33 @@ let test_eval () =
   check_raises "undefined variable raises"
     (fun () -> run "def main with input x output y as y := z" 0)
 
+let check_cfg_eval name src input =
+  let prog = parse src in
+  let cfg = Minimp_cfg.cfg_of_program prog in
+  check_int name
+    (Minimp_eval.eval_cfg cfg prog input)
+    (Minimp_eval.eval_program prog input)
+
+let check_optimized_cfg_eval name src input =
+  let prog = parse src in
+  let cfg = Minimp_opt.optimise prog (Minimp_cfg.cfg_of_program prog) in
+  check_int name
+    (Minimp_eval.eval_cfg cfg prog input)
+    (Minimp_eval.eval_program prog input)
+
+let test_cfg_eval () =
+  section "CFG evaluator";
+  check_cfg_eval "sequence"
+    "def main with input x output y as y := (x + 1) * 2" 4;
+  check_cfg_eval "conditional"
+    "def main with input x output y as if x < 0 then y := 0 - x else y := x" (-3);
+  check_cfg_eval "loop"
+    "def main with input x output y as y := 0 ; while 0 < x do (y := y + x ; x := x - 1)" 4;
+  check_optimized_cfg_eval "optimized loop"
+    "def main with input x output y as y := 0 ; while 0 < x do (y := y + x ; x := x - 1)" 4
+
 let () =
   Printf.printf "MiniImp Evaluator Tests\n";
   test_eval ();
+  test_cfg_eval ();
   summary ()
